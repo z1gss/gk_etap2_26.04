@@ -1,4 +1,3 @@
-// funkcje do operacji na plikach
 #include "GK2026-Pliki.h"
 #include "GK2026-Zmienne.h"
 #include "GK2026-Funkcje.h"
@@ -12,53 +11,47 @@
 
 using namespace std;
 
-// ---------- bitstream 5-bit ----------
+static void pakujBitPlane(const Uint8* idx, const vector<int>& kol,
+                          vector<Uint8>& wynik) {
+    wynik.clear();
+    size_t n = kol.size();
+    wynik.reserve(((n + 7) / 8) * 5);
+    for (size_t base = 0; base < n; base += 8) {
+        Uint8 bajt[5] = {0, 0, 0, 0, 0};
+        for (int j = 0; j < 8 && base + (size_t)j < n; j++) {
+            Uint8 v = (Uint8)(idx[kol[base + j]] & 0x1F);
+            for (int k = 0; k < 5; k++) {
+                int bit = (v >> k) & 1;
+                bajt[k] |= (Uint8)(bit << (7 - j));
+            }
+        }
+        for (int k = 0; k < 5; k++) wynik.push_back(bajt[k]);
+    }
+}
 
-struct ZapisBitow {
-    vector<Uint8> bajty;
-    int           bitWBajcie; // 0..7, ile bitow juz zajmuje aktualny bajt (od MSB)
-
-    ZapisBitow() : bitWBajcie(0) {}
-
-    void wpisz5(Uint8 v) {
-        v &= 0x1F;
-        for (int i = 4; i >= 0; i--) {
-            int bit = (v >> i) & 1;
-            if (bitWBajcie == 0) bajty.push_back(0);
-            bajty.back() |= (Uint8)(bit << (7 - bitWBajcie));
-            bitWBajcie = (bitWBajcie + 1) & 7;
+static void rozpakujBitPlane(const Uint8* dane, int rozmiar, size_t n,
+                             vector<Uint8>& idxKol) {
+    idxKol.assign(n, 0);
+    size_t bajtPoz = 0;
+    for (size_t base = 0; base < n; base += 8) {
+        Uint8 bajt[5];
+        for (int k = 0; k < 5; k++) {
+            bajt[k] = (bajtPoz < (size_t)rozmiar) ? dane[bajtPoz] : 0;
+            bajtPoz++;
+        }
+        for (int j = 0; j < 8 && base + (size_t)j < n; j++) {
+            Uint8 v = 0;
+            for (int k = 0; k < 5; k++) {
+                int bit = (bajt[k] >> (7 - j)) & 1;
+                v |= (Uint8)(bit << k);
+            }
+            idxKol[base + j] = v;
         }
     }
-};
+}
 
-struct OdczytBitow {
-    const Uint8* bajty;
-    int          rozmiar;
-    int          poz;       // licznik bitow od poczatku
-
-    OdczytBitow(const Uint8* b, int r) : bajty(b), rozmiar(r), poz(0) {}
-
-    Uint8 czytaj5() {
-        Uint8 v = 0;
-        for (int i = 0; i < 5; i++) {
-            int bajtIdx = poz >> 3;
-            int bitIdx  = 7 - (poz & 7);
-            int bit     = (bajtIdx < rozmiar) ? ((bajty[bajtIdx] >> bitIdx) & 1) : 0;
-            v = (Uint8)((v << 1) | bit);
-            poz++;
-        }
-        return v;
-    }
-};
-
-// ---------- konwersje obraz -> indeksy ----------
-
-// stosuje filtracje + dithering wybranego rodzaju
-//   dithering: 0 = brak, 1 = Floyd-Steinberg, 2 = Bayer 4x4 (uporzadkowany)
-// zapisuje wynikowe indeksy 0..31 do tablicy idx (rozmiar w*h)
 static void filtrujKolor(const SDL_Color* zrodlo, int w, int h,
                          Uint8* idx, int dithering, int dedykowana) {
-    // pracujemy na buforze typu int dla bezpiecznego rozprowadzania bledu
     vector<int> rR(w * h), rG(w * h), rB(w * h);
     for (int i = 0; i < w * h; i++) {
         rR[i] = zrodlo[i].r;
@@ -66,8 +59,6 @@ static void filtrujKolor(const SDL_Color* zrodlo, int w, int h,
         rB[i] = zrodlo[i].b;
     }
 
-    // skoki kwantyzacji dla narzuconej palety 2-2-1 (R 4 poziomy, G 4, B 2)
-    // wykorzystywane przy ditheringu Bayera, aby bias byl wlasciwego rzedu
     const int stepR = 256 / 4;
     const int stepG = 256 / 4;
     const int stepB = 256 / 2;
@@ -79,8 +70,6 @@ static void filtrujKolor(const SDL_Color* zrodlo, int w, int h,
             int g = rG[p];
             int b = rB[p];
 
-            // Bayer 4x4: dodaj bias z zakresu (-step/2, +step/2)
-            // wzor: (M+0.5)/16 - 0.5  -> calkowicie: (2M - 15) / 32
             if (dithering == 2) {
                 int M = bayer4x4[y & 3][x & 3];
                 r += ((2 * M - 15) * stepR) / 32;
@@ -98,7 +87,6 @@ static void filtrujKolor(const SDL_Color* zrodlo, int w, int h,
             idx[p] = (Uint8)k;
 
             if (dithering == 1) {
-                // Floyd-Steinberg - rozprowadzanie bledu kwantyzacji do sasiadow
                 SDL_Color pal = dedykowana ? paletaKolorDedykowana[k]
                                            : paletaKolorNarzucona[k];
                 int eR = r - pal.r;
@@ -137,7 +125,6 @@ static void filtrujSzary(const SDL_Color* zrodlo, int w, int h,
         rY[i] = luminancja(zrodlo[i].r, zrodlo[i].g, zrodlo[i].b);
     }
 
-    // skok kwantyzacji dla 32 narzuconych poziomow szarosci
     const int stepY = 256 / 32;
 
     for (int y = 0; y < h; y++) {
@@ -145,7 +132,6 @@ static void filtrujSzary(const SDL_Color* zrodlo, int w, int h,
             int p = y * w + x;
             int yy = rY[p];
 
-            // Bayer 4x4: bias z (-step/2, +step/2)
             if (dithering == 2) {
                 int M = bayer4x4[y & 3][x & 3];
                 yy += ((2 * M - 15) * stepY) / 32;
@@ -159,7 +145,6 @@ static void filtrujSzary(const SDL_Color* zrodlo, int w, int h,
             idx[p] = (Uint8)k;
 
             if (dithering == 1) {
-                // Floyd-Steinberg
                 Uint8 pal = dedykowana ? paletaSzaryDedykowana[k]
                                        : paletaSzaryNarzucona[k];
                 int e = yy - pal;
@@ -174,7 +159,18 @@ static void filtrujSzary(const SDL_Color* zrodlo, int w, int h,
     }
 }
 
-// ---------- konwersja BMP -> GK26 ----------
+static void zbudujKolejnosc(int w, int h, vector<int>& kol) {
+    kol.clear();
+    kol.reserve(w * h);
+    for (int cx = 0; cx < w; cx += 8) {
+        for (int y = 0; y < h; y++) {
+            for (int dx = 0; dx < 8; dx++) {
+                int x = cx + dx;
+                if (x < w) kol.push_back(y * w + x);
+            }
+        }
+    }
+}
 
 int konwersjaBMPdoGK26(const char* nazwaWej, const char* nazwaWyj,
                        int tryb, int dithering) {
@@ -187,7 +183,6 @@ int konwersjaBMPdoGK26(const char* nazwaWej, const char* nazwaWyj,
     int w = bmp->w;
     int h = bmp->h;
 
-    // wczytujemy do tymczasowego bufora o rozmiarze odpowiadajacym BMP
     vector<SDL_Color> zrodlo(w * h);
     SDL_LockSurface(bmp);
     for (int yy = 0; yy < h; yy++) {
@@ -205,14 +200,12 @@ int konwersjaBMPdoGK26(const char* nazwaWej, const char* nazwaWyj,
     SDL_UnlockSurface(bmp);
     SDL_FreeSurface(bmp);
 
-    // kopia do globalu obrazRGB (z przycieciem do pojemnosci)
     int W = (w < szerokosc) ? w : szerokosc;
     int H = (h < wysokosc)  ? h : wysokosc;
     for (int yy = 0; yy < H; yy++)
         for (int xx = 0; xx < W; xx++)
             obrazRGB[yy * szerokosc + xx] = zrodlo[yy * w + xx];
 
-    // budujemy palete wlasciwa dla trybu
     int kolor      = (tryb == TRYB_KOLOR_NARZUCONY || tryb == TRYB_KOLOR_DEDYKOWANY);
     int dedykowana = (tryb == TRYB_KOLOR_DEDYKOWANY || tryb == TRYB_SZARY_DEDYKOWANY);
     if (tryb == TRYB_KOLOR_NARZUCONY)  zbudujPaleteKolorNarzucona();
@@ -224,11 +217,11 @@ int konwersjaBMPdoGK26(const char* nazwaWej, const char* nazwaWyj,
     if (kolor) filtrujKolor(&zrodlo[0], w, h, &idx[0], dithering, dedykowana);
     else       filtrujSzary(&zrodlo[0], w, h, &idx[0], dithering, dedykowana);
 
-    // pakowanie 5-bit
-    ZapisBitow bs;
-    for (int i = 0; i < w * h; i++) bs.wpisz5(idx[i]);
+    vector<int> kolejnosc;
+    zbudujKolejnosc(w, h, kolejnosc);
+    vector<Uint8> spakowane;
+    pakujBitPlane(&idx[0], kolejnosc, spakowane);
 
-    // zapis pliku
     FILE* f = fopen(nazwaWyj, "wb");
     if (!f) { printf("Nie mozna otworzyc pliku do zapisu: %s\n", nazwaWyj); return -1; }
 
@@ -239,20 +232,19 @@ int konwersjaBMPdoGK26(const char* nazwaWej, const char* nazwaWyj,
     hdr[3] = GK26_MAGIC3;
     hdr[4] = GK26_WERSJA;
     hdr[5] = (Uint8)tryb;
-    hdr[6] = (Uint8)(dithering & 0xFF); // 0=brak, 1=Floyd-Steinberg, 2=Bayer 4x4
+    hdr[6] = (Uint8)(dithering & 0xFF);
     hdr[7] = GK26_BPP;
     hdr[8]  = (Uint8)(w & 0xFF);
     hdr[9]  = (Uint8)((w >> 8) & 0xFF);
     hdr[10] = (Uint8)(h & 0xFF);
     hdr[11] = (Uint8)((h >> 8) & 0xFF);
-    Uint32 dataSize = (Uint32)bs.bajty.size();
+    Uint32 dataSize = (Uint32)spakowane.size();
     hdr[12] = (Uint8)( dataSize        & 0xFF);
     hdr[13] = (Uint8)((dataSize >>  8) & 0xFF);
     hdr[14] = (Uint8)((dataSize >> 16) & 0xFF);
     hdr[15] = (Uint8)((dataSize >> 24) & 0xFF);
     fwrite(hdr, 1, 16, f);
 
-    // paleta tylko dla trybow dedykowanych
     if (tryb == TRYB_KOLOR_DEDYKOWANY) {
         for (int i = 0; i < 32; i++) {
             Uint8 rgb[3] = { paletaKolorDedykowana[i].r,
@@ -264,8 +256,8 @@ int konwersjaBMPdoGK26(const char* nazwaWej, const char* nazwaWyj,
         fwrite(paletaSzaryDedykowana, 1, 32, f);
     }
 
-    if (!bs.bajty.empty())
-        fwrite(&bs.bajty[0], 1, bs.bajty.size(), f);
+    if (!spakowane.empty())
+        fwrite(&spakowane[0], 1, spakowane.size(), f);
     fclose(f);
 
     printf("Zapisano %s (tryb=%d dithering=%d) -- %d bajtow danych\n",
@@ -273,9 +265,6 @@ int konwersjaBMPdoGK26(const char* nazwaWej, const char* nazwaWyj,
     return 0;
 }
 
-// ---------- odczyt .gk26 ----------
-
-// uniwersalny odczyt do bufora obrazRGB; zwraca 0 ok, -1 blad
 static int wczytajGK26(const char* nazwa, int* zwrocW, int* zwrocH,
                        int* zwrocTryb, int* zwrocDith) {
     FILE* f = fopen(nazwa, "rb");
@@ -303,7 +292,6 @@ static int wczytajGK26(const char* nazwa, int* zwrocW, int* zwrocH,
         printf("Niewspierana wersja/bpp pliku\n"); fclose(f); return -1;
     }
 
-    // wczytujemy palete (jesli tryb dedykowany) i odtwarzamy palety narzucone
     if (tryb == TRYB_KOLOR_NARZUCONY) zbudujPaleteKolorNarzucona();
     if (tryb == TRYB_SZARY_NARZUCONY) zbudujPaleteSzaryNarzucona();
     if (tryb == TRYB_KOLOR_DEDYKOWANY) {
@@ -325,23 +313,30 @@ static int wczytajGK26(const char* nazwa, int* zwrocW, int* zwrocH,
     }
     fclose(f);
 
-    OdczytBitow ob(dane.empty() ? NULL : &dane[0], (int)dataSize);
-    int n = w * h;
     int maxN = szerokosc * wysokosc;
-    if (n > maxN) n = maxN;
-    for (int i = 0; i < n; i++) {
-        Uint8 idx = ob.czytaj5();
+
+    vector<int> kolejnosc;
+    zbudujKolejnosc(w, h, kolejnosc);
+
+    vector<Uint8> idxKol;
+    rozpakujBitPlane(dane.empty() ? NULL : &dane[0], (int)dataSize,
+                     kolejnosc.size(), idxKol);
+
+    for (size_t i = 0; i < kolejnosc.size(); i++) {
+        Uint8 idx = idxKol[i];
         if (idx > 31) idx = 31;
+        int dest = kolejnosc[i];
+        if (dest < 0 || dest >= maxN) continue;
         if (tryb == TRYB_KOLOR_NARZUCONY) {
-            obrazRGB[i] = paletaKolorNarzucona[idx];
+            obrazRGB[dest] = paletaKolorNarzucona[idx];
         } else if (tryb == TRYB_KOLOR_DEDYKOWANY) {
-            obrazRGB[i] = paletaKolorDedykowana[idx];
+            obrazRGB[dest] = paletaKolorDedykowana[idx];
         } else if (tryb == TRYB_SZARY_NARZUCONY) {
             Uint8 v = paletaSzaryNarzucona[idx];
-            obrazRGB[i].r = v; obrazRGB[i].g = v; obrazRGB[i].b = v; obrazRGB[i].a = 255;
+            obrazRGB[dest].r = v; obrazRGB[dest].g = v; obrazRGB[dest].b = v; obrazRGB[dest].a = 255;
         } else if (tryb == TRYB_SZARY_DEDYKOWANY) {
             Uint8 v = paletaSzaryDedykowana[idx];
-            obrazRGB[i].r = v; obrazRGB[i].g = v; obrazRGB[i].b = v; obrazRGB[i].a = 255;
+            obrazRGB[dest].r = v; obrazRGB[dest].g = v; obrazRGB[dest].b = v; obrazRGB[dest].a = 255;
         }
     }
 
@@ -383,7 +378,6 @@ int konwersjaGK26doBMP(const char* nazwaWej, const char* nazwaWyj) {
         for (int x = 0; x < w; x++) {
             SDL_Color c = obrazRGB[y * w + x];
             Uint8* p = (Uint8*)out->pixels + y * out->pitch + x * 3;
-            // SDL_PIXELFORMAT_RGB24 = R,G,B w pamieci
             p[0] = c.r; p[1] = c.g; p[2] = c.b;
         }
     }

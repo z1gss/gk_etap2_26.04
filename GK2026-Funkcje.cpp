@@ -1,4 +1,3 @@
-// podstawowe funkcje
 #include "GK2026-Funkcje.h"
 #include "GK2026-Zmienne.h"
 #include "GK2026-Paleta.h"
@@ -12,9 +11,6 @@ using namespace std;
 
 char ostatniBMP[256] = "obrazek1.bmp";
 
-// ---------------------------------------------------------------
-// istniejace funkcje (palety 32-kolorowe, format .gk26)
-// ---------------------------------------------------------------
 static void konwertujIPokaz(int tryb, int dithering) {
     const char* nazwaWyj = "obrazek.gk26";
     if (konwersjaBMPdoGK26(ostatniBMP, nazwaWyj, tryb, dithering) != 0) return;
@@ -38,23 +34,15 @@ void Funkcja9() {
 void Funkcja10() { konwertujIPokaz(TRYB_KOLOR_NARZUCONY, 2); }
 void Funkcja11() { konwertujIPokaz(TRYB_SZARY_NARZUCONY, 2); }
 
-// ---------------------------------------------------------------
-// ZADANIE PROJEKTOWE
-// MedianCut dla roznych wersji bitowych (3-bit..7-bit)
-// Wyswietlanie: lewa polowa = oryginal, prawa polowa = wynik
-// Pasek palety na dole prawej polowy
-// ---------------------------------------------------------------
-
 static int clamp(int v) {
     if (v < 0) return 0;
     if (v > 255) return 255;
     return v;
 }
 
-// Rysuje palete (kolor lub szary) jako pasek na dole prawej polowy ekranu
 static void rysujPasekPaletKolor(int bitIndex) {
     int n = ROZMIARY_PALET[bitIndex];
-    int W = szerokosc / 2;          // szerokosc polowy
+    int W = szerokosc / 2;
     int blok = W / n;
     int yStart = wysokosc - 20;
     for (int i = 0; i < n; i++) {
@@ -84,7 +72,6 @@ static void rysujPasekPaletSzary(int bitIndex) {
     }
 }
 
-// Znajduje najblizszy kolor w paletaKolorMC[bitIndex]
 static int znajdzKolor(int bitIndex, Uint8 r, Uint8 g, Uint8 b) {
     int n = ROZMIARY_PALET[bitIndex];
     int bestIdx = 0, bestD = 1 << 30;
@@ -98,7 +85,6 @@ static int znajdzKolor(int bitIndex, Uint8 r, Uint8 g, Uint8 b) {
     return bestIdx;
 }
 
-// Znajduje najblizszy odcien w paletaSzaryMC[bitIndex]
 static int znajdzSzary(int bitIndex, Uint8 y) {
     int n = ROZMIARY_PALET[bitIndex];
     int bestIdx = 0, bestD = 1 << 30;
@@ -109,17 +95,14 @@ static int znajdzSzary(int bitIndex, Uint8 y) {
     return bestIdx;
 }
 
-// MedianCut kolory - glowna funkcja zadania
 void zadMedianCutKolor(int bitIndex, int dithering) {
     int n = ROZMIARY_PALET[bitIndex];
     int W = szerokosc;
     int H = wysokosc;
     int pixCount = W * H;
 
-    // 1. Budujemy dedykowana palete MedianCut
     medianCutKolor(obrazRGB, pixCount, paletaKolorMC[bitIndex], n);
 
-    // 2. Bufor bledow dla Floyd-Steinberg (float R,G,B)
     vector<int> bufR(pixCount), bufG(pixCount), bufB(pixCount);
     for (int i = 0; i < pixCount; i++) {
         bufR[i] = obrazRGB[i].r;
@@ -127,12 +110,10 @@ void zadMedianCutKolor(int bitIndex, int dithering) {
         bufB[i] = obrazRGB[i].b;
     }
 
-    // 3. Wyswietlamy oryginal po lewej
     for (int y = 0; y < H; y++)
         for (int x = 0; x < W/2; x++)
             setPixel(x, y, obrazRGB[y*W+x].r, obrazRGB[y*W+x].g, obrazRGB[y*W+x].b);
 
-    // 4. Kwantyzacja i rysowanie prawej polowy
     for (int y = 0; y < H; y++) {
         for (int x = 0; x < W/2; x++) {
             int p = y * W + x;
@@ -172,10 +153,8 @@ void zadMedianCutKolor(int bitIndex, int dithering) {
         }
     }
 
-    // 5. Pasek palety
     rysujPasekPaletKolor(bitIndex);
 
-    // 6. Info w tytule okna
     char tytulOkna[128];
     const char* dithStr = dithering ? " + Floyd-Steinberg" : "";
     sprintf(tytulOkna, "GK2026 - MedianCut %d-bit (%d kolorow)%s",
@@ -186,28 +165,23 @@ void zadMedianCutKolor(int bitIndex, int dithering) {
     printf("MedianCut kolor %d-bit (%d kolorow)%s\n", bitIndex+3, n, dithStr);
 }
 
-// MedianCut szarosci - glowna funkcja zadania
 void zadMedianCutSzary(int bitIndex, int dithering) {
     int n = ROZMIARY_PALET[bitIndex];
     int W = szerokosc;
     int H = wysokosc;
     int pixCount = W * H;
 
-    // 1. Budujemy dedykowana palete szarosci MedianCut
     medianCutSzary(obrazRGB, pixCount, paletaSzaryMC[bitIndex], n);
 
-    // 2. Bufor luminancji dla Floyd-Steinberg
     vector<int> bufY(pixCount);
     for (int i = 0; i < pixCount; i++) {
         bufY[i] = luminancja(obrazRGB[i].r, obrazRGB[i].g, obrazRGB[i].b);
     }
 
-    // 3. Oryginal po lewej
     for (int y = 0; y < H; y++)
         for (int x = 0; x < W/2; x++)
             setPixel(x, y, obrazRGB[y*W+x].r, obrazRGB[y*W+x].g, obrazRGB[y*W+x].b);
 
-    // 4. Kwantyzacja szarosci i rysowanie prawej polowy
     for (int y = 0; y < H; y++) {
         for (int x = 0; x < W/2; x++) {
             int p = y * W + x;
@@ -229,10 +203,8 @@ void zadMedianCutSzary(int bitIndex, int dithering) {
         }
     }
 
-    // 5. Pasek palety
     rysujPasekPaletSzary(bitIndex);
 
-    // 6. Info w tytule
     char tytulOkna[128];
     const char* dithStr = dithering ? " + Floyd-Steinberg" : "";
     sprintf(tytulOkna, "GK2026 - Szarosci MedianCut %d-bit (%d odcieni)%s",
@@ -243,9 +215,6 @@ void zadMedianCutSzary(int bitIndex, int dithering) {
     printf("MedianCut szary %d-bit (%d odcieni)%s\n", bitIndex+3, n, dithStr);
 }
 
-// ---------------------------------------------------------------
-// pokazPalete - siatka blokow 8x4
-// ---------------------------------------------------------------
 void pokazPalete(int tryb) {
     czyscEkran(0, 0, 0);
     const int blok = 60;
@@ -276,9 +245,6 @@ void pokazPalete(int tryb) {
     SDL_UpdateWindowSurface(window);
 }
 
-// ---------------------------------------------------------------
-// Funkcje podstawowe SDL
-// ---------------------------------------------------------------
 void setPixel(int x, int y, Uint8 R, Uint8 G, Uint8 B) {
     if ((x>=0)&&(x<szerokosc)&&(y>=0)&&(y<wysokosc)) {
         Uint32 pixel = SDL_MapRGB(screen->format, R, G, B);

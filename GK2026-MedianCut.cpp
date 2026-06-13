@@ -1,4 +1,3 @@
-// algorytm kwantyzacji barw / poziomow szarosci (MedianCut)
 #include "GK2026-MedianCut.h"
 #include "GK2026-Zmienne.h"
 
@@ -8,10 +7,9 @@
 
 using namespace std;
 
-// pojedynczy "kubelek" - zakres pikseli i jego rozpietosci po skladowych
 struct Kubelek {
     int start;
-    int koniec; // wylacznie
+    int koniec;
 };
 
 static int rozpietoscR(const SDL_Color* px, int s, int e) {
@@ -47,14 +45,12 @@ void medianCutKolor(const SDL_Color* piksele, int liczbaPikseli,
                     SDL_Color* paleta, int ileBarw) {
     if (liczbaPikseli <= 0 || ileBarw <= 0) return;
 
-    // pracujemy na kopii - bedziemy sortowac
     vector<SDL_Color> bufor(piksele, piksele + liczbaPikseli);
 
     vector<Kubelek> kub;
     kub.push_back({0, liczbaPikseli});
 
     while ((int)kub.size() < ileBarw) {
-        // wybieramy kubelek z najwieksza rozpietoscia
         int idxNaj = -1;
         int najR   = -1;
         char najOs = 'R';
@@ -69,7 +65,7 @@ void medianCutKolor(const SDL_Color* piksele, int liczbaPikseli,
             if (bb > najLok) { najLok = bb; os = 'B'; }
             if (najLok > najR) { najR = najLok; idxNaj = (int)k; najOs = os; }
         }
-        if (idxNaj < 0) break; // nie da sie juz dzielic
+        if (idxNaj < 0) break;
 
         int s = kub[idxNaj].start, e = kub[idxNaj].koniec;
         if (najOs == 'R') sort(bufor.begin() + s, bufor.begin() + e, cmpR);
@@ -83,7 +79,6 @@ void medianCutKolor(const SDL_Color* piksele, int liczbaPikseli,
         kub.push_back(prawa);
     }
 
-    // wyznaczamy reprezentanta (srednia) dla kazdego kubelka
     for (int i = 0; i < ileBarw; i++) {
         if (i < (int)kub.size() && kub[i].koniec > kub[i].start) {
             long long sR = 0, sG = 0, sB = 0;
@@ -98,7 +93,6 @@ void medianCutKolor(const SDL_Color* piksele, int liczbaPikseli,
             paleta[i].b = (Uint8)(sB / n);
             paleta[i].a = 255;
         } else {
-            // mniej kubelkow niz potrzeba - wypelniamy duplikatem
             paleta[i] = paleta[0];
         }
     }
@@ -153,6 +147,5 @@ void medianCutSzary(const SDL_Color* piksele, int liczbaPikseli,
         }
     }
 
-    // sortujemy palete szarosci rosnaco - czytelne i ulatwia wyszukiwanie
     sort(paleta, paleta + ileBarw);
 }

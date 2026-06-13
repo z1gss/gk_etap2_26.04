@@ -86,23 +86,45 @@ Y_i = round(i * 255 / 31),    i = 0..31
 
 ## 3. Dane pikseli (5 bitów / piksel)
 
-Piksele są zapisywane w kolejności **wierszami od góry do dołu**, w każdym
-wierszu od lewej do prawej (kolejność rosnąca `y`, w niej rosnąca `x`).
-
-Pojedynczy piksel to 5-bitowy indeks palety (`0..31`). Bity są pakowane do bajtów
-w kolejności **MSB first**: pierwszy zapisywany bit lokuje się na pozycji 7 bajtu.
-Po wstawieniu wszystkich pikseli ostatni niepełny bajt jest dopełniany zerami.
-
-Schemat pakowania kolejnych 8 pikseli (`P0..P7`) w 5 bajtów:
+Dane są zbierane w kolejności omówionej na spotkaniach projektowych — **blokami
+po 8 pikseli w pionowych paskach**. Pierwszy blok zawiera piksele
+`(0,0)..(7,0)`, kolejny `(0,1)..(7,1)` itd. Po dotarciu do dolnej krawędzi obrazu
+następny blok wraca do pierwszego wiersza kolejnego 8-pikselowego paska:
+`(8,0)..(15,0)`, `(8,1)..(15,1)`, … Schemat dla obrazu `24×16`:
 
 ```
-bit:    7 6 5 4 3 | 2 1 0 7 6 | 5 4 3 2 1 | 0 7 6 5 4 | 3 2 1 0 7 | 6 5 4 3 2 | 1 0
-piksel: P0 P0 P0 P0 P0 P1 P1 P1 P1 P1 P2 P2 P2 P2 P2 P3 P3 P3 P3 P3 P4 P4 P4 P4 P4 P5 P5 P5 P5 P5 P6 P6 P6 P6 P6 P7 P7 P7 P7 P7
+       0   1   2   3   4   5   6   7    8   9  10  11  12  13  14  15   16 ...
+  0:   0   1   2   3   4   5   6   7  128 129 130 131 132 133 134 135  256 ...
+  1:   8   9  10  11  12  13  14  15  136 137 138 139 140 141 142 143  264 ...
+  2:  16  17  18  19  20  21  22  23  144 145 146 147 148 149 150 151  272 ...
+ ...
 ```
 
-`8 pikseli × 5 bitów = 40 bitów = 5 bajtów`, więc dla obrazu `W × H` przewidywany
-rozmiar danych to `ceil(W * H * 5 / 8)` bajtów. Dla obrazka `640 × 400`:
-`640 * 400 * 5 / 8 = 160 000 B`.
+(Komórka zawiera kolejny numer zbieranej wartości, liczony od 0.) Jeżeli
+szerokość nie jest wielokrotnością 8, ostatni pasek jest węższy (pomijane są
+kolumny `x ≥ szerokość`).
+
+Pojedynczy piksel to 5-bitowy indeks palety (`0..31`). Strumień pikseli (w wyżej
+opisanej kolejności) jest dzielony na **bloki po 8 pikseli**, a każdy blok pakowany
+jest **bit-plane** w 5 bajtów: bajt nr `k` zawiera bit nr `k` wszystkich 8 pikseli
+bloku. Pierwszy piksel bloku trafia na pozycję najbardziej znaczącą (bit 7), ostatni
+na najmniej znaczącą (bit 0):
+
+```
+bajt 0: A0 B0 C0 D0 E0 F0 G0 H0    (bit nr 0 ośmiu pikseli A..H)
+bajt 1: A1 B1 C1 D1 E1 F1 G1 H1
+bajt 2: A2 B2 C2 D2 E2 F2 G2 H2
+bajt 3: A3 B3 C3 D3 E3 F3 G3 H3
+bajt 4: A4 B4 C4 D4 E4 F4 G4 H4
+```
+
+gdzie `A..H` to kolejne piksele bloku, a `X0..X4` to bity piksela `X` (`X0` = bit
+najmłodszy). Jeżeli ostatni blok ma mniej niż 8 pikseli, brakujące pozycje bitowe
+są zerowane.
+
+`8 pikseli × 5 bitów = 40 bitów = 5 bajtów`, więc dla obrazu `W × H` rozmiar danych
+to `5 · ceil(W * H / 8)` bajtów (= `ceil(W * H * 5 / 8)` gdy `W*H` jest wielokrotnością
+8). Dla obrazka `640 × 400`: `640 * 400 / 8 * 5 = 160 000 B`.
 
 ---
 
@@ -187,6 +209,28 @@ Po uruchomieniu (`bin/Release/GK2026-Projekt.exe`) okno SDL akceptuje klawisze:
 | `u`        | Podgląd palety szarości dedykowanej (po wykonaniu konwersji `7`/`8`)     |
 | `b`        | Wyczyść ekran                                                            |
 | `ESC`      | Wyjście                                                                  |
+
+### 6.1. Zadanie — MedianCut dla różnych wersji bitowych
+
+Podgląd kwantyzacji MedianCut dla alfabetów 3–7 bitowych (lewa połowa okna —
+oryginał, prawa — wynik, na dole pasek wygenerowanej palety). Przytrzymanie
+**Shift** włącza dithering Floyd-Steinberg. Klawisze te tylko wyświetlają wynik —
+nie zapisują pliku `.gk26`.
+
+| Klawisz | Shift | Tryb                                  |
+|---------|-------|---------------------------------------|
+| `z`     | `Z`   | kolor MedianCut 3-bit (8 barw)        |
+| `x`     | `X`   | kolor MedianCut 4-bit (16 barw)       |
+| `c`     | `C`   | kolor MedianCut 5-bit (32 barwy)      |
+| `v`     | `V`   | kolor MedianCut 6-bit (64 barwy)      |
+| `n`     | `N`   | kolor MedianCut 7-bit (128 barw)      |
+| `r`     | `R`   | szarości MedianCut 3-bit (8 odcieni)  |
+| `t`     | `T`   | szarości MedianCut 4-bit (16 odcieni) |
+| `y`     | `Y`   | szarości MedianCut 5-bit (32 odcienie)|
+| `e`     | `E`   | szarości MedianCut 6-bit (64 odcienie)|
+| `m`     | `M`   | szarości MedianCut 7-bit (128 odcieni)|
+
+Bez Shift — bez ditheringu; z Shift — z ditheringiem Floyd-Steinberg.
 
 Po naciśnięciu klawisza `1..8` aplikacja zapisuje plik wynikowy `obrazek.gk26`
 oraz natychmiast wczytuje go ponownie i wyświetla, dzięki czemu od razu widać,
