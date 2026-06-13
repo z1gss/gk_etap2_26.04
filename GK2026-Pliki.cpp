@@ -12,44 +12,60 @@
 
 using namespace std;
 
-// ---------- bitstream 5-bit ----------
+// ---------- pakowanie 5-bit (bit-plane, zadanie 1) ----------
+//
+// Zgodnie ze sposobem omowionym na spotkaniach projektowych blok 8 kolejnych
+// pikseli (kazdy 5-bitowy) jest pakowany w 5 bajtow tak, ze bajt nr k zawiera
+// bit nr k wszystkich 8 pikseli. Pierwszy piksel bloku trafia na pozycje
+// najbardziej znaczaca (bit 7), ostatni na najmniej znaczaca (bit 0):
+//
+//   bajt 0: A0 B0 C0 D0 E0 F0 G0 H0   (bit nr 0 osmiu pikseli A..H)
+//   bajt 1: A1 B1 C1 D1 E1 F1 G1 H1
+//   ...
+//   bajt 4: A4 B4 C4 D4 E4 F4 G4 H4
+//
+// Piksele bierzemy w kolejnosci podanej w 'kol' (8-pikselowe pionowe paski),
+// dzielac ten strumien na bloki po 8.
 
-struct ZapisBitow {
-    vector<Uint8> bajty;
-    int           bitWBajcie; // 0..7, ile bitow juz zajmuje aktualny bajt (od MSB)
+static void pakujBitPlane(const Uint8* idx, const vector<int>& kol,
+                          vector<Uint8>& wynik) {
+    wynik.clear();
+    size_t n = kol.size();
+    wynik.reserve(((n + 7) / 8) * 5);
+    for (size_t base = 0; base < n; base += 8) {
+        Uint8 bajt[5] = {0, 0, 0, 0, 0};
+        for (int j = 0; j < 8 && base + (size_t)j < n; j++) {
+            Uint8 v = (Uint8)(idx[kol[base + j]] & 0x1F);
+            for (int k = 0; k < 5; k++) {
+                int bit = (v >> k) & 1;
+                bajt[k] |= (Uint8)(bit << (7 - j));
+            }
+        }
+        for (int k = 0; k < 5; k++) wynik.push_back(bajt[k]);
+    }
+}
 
-    ZapisBitow() : bitWBajcie(0) {}
-
-    void wpisz5(Uint8 v) {
-        v &= 0x1F;
-        for (int i = 4; i >= 0; i--) {
-            int bit = (v >> i) & 1;
-            if (bitWBajcie == 0) bajty.push_back(0);
-            bajty.back() |= (Uint8)(bit << (7 - bitWBajcie));
-            bitWBajcie = (bitWBajcie + 1) & 7;
+// Odwrotnosc pakowania: z bajtow odtwarza indeksy 5-bitowe w kolejnosci 'kol'.
+static void rozpakujBitPlane(const Uint8* dane, int rozmiar, size_t n,
+                             vector<Uint8>& idxKol) {
+    idxKol.assign(n, 0);
+    size_t bajtPoz = 0;
+    for (size_t base = 0; base < n; base += 8) {
+        Uint8 bajt[5];
+        for (int k = 0; k < 5; k++) {
+            bajt[k] = (bajtPoz < (size_t)rozmiar) ? dane[bajtPoz] : 0;
+            bajtPoz++;
+        }
+        for (int j = 0; j < 8 && base + (size_t)j < n; j++) {
+            Uint8 v = 0;
+            for (int k = 0; k < 5; k++) {
+                int bit = (bajt[k] >> (7 - j)) & 1;
+                v |= (Uint8)(bit << k);
+            }
+            idxKol[base + j] = v;
         }
     }
-};
-
-struct OdczytBitow {
-    const Uint8* bajty;
-    int          rozmiar;
-    int          poz;       // licznik bitow od poczatku
-
-    OdczytBitow(const Uint8* b, int r) : bajty(b), rozmiar(r), poz(0) {}
-
-    Uint8 czytaj5() {
-        Uint8 v = 0;
-        for (int i = 0; i < 5; i++) {
-            int bajtIdx = poz >> 3;
-            int bitIdx  = 7 - (poz & 7);
-            int bit     = (bajtIdx < rozmiar) ? ((bajty[bajtIdx] >> bitIdx) & 1) : 0;
-            v = (Uint8)((v << 1) | bit);
-            poz++;
-        }
-        return v;
-    }
-};
+}
 
 // ---------- konwersje obraz -> indeksy ----------
 
@@ -174,6 +190,25 @@ static void filtrujSzary(const SDL_Color* zrodlo, int w, int h,
     }
 }
 
+// ---------- kolejnosc zbierania danych ----------
+
+// Buduje liste pozycji pikseli (row-major p = y*w + x) w kolejnosci omowionej
+// na spotkaniach projektowych: blokami po 8 pikseli w pionowych paskach.
+// Pierwszy blok: (0,0)..(7,0), kolejny: (0,1)..(7,1), ... po dotarciu do
+// dolnej krawedzi nastepny 8-pikselowy pasek: (8,0)..(15,0) itd.
+static void zbudujKolejnosc(int w, int h, vector<int>& kol) {
+    kol.clear();
+    kol.reserve(w * h);
+    for (int cx = 0; cx < w; cx += 8) {
+        for (int y = 0; y < h; y++) {
+            for (int dx = 0; dx < 8; dx++) {
+                int x = cx + dx;
+                if (x < w) kol.push_back(y * w + x);
+            }
+        }
+    }
+}
+
 // ---------- konwersja BMP -> GK26 ----------
 
 int konwersjaBMPdoGK26(const char* nazwaWej, const char* nazwaWyj,
@@ -224,9 +259,12 @@ int konwersjaBMPdoGK26(const char* nazwaWej, const char* nazwaWyj,
     if (kolor) filtrujKolor(&zrodlo[0], w, h, &idx[0], dithering, dedykowana);
     else       filtrujSzary(&zrodlo[0], w, h, &idx[0], dithering, dedykowana);
 
-    // pakowanie 5-bit
-    ZapisBitow bs;
-    for (int i = 0; i < w * h; i++) bs.wpisz5(idx[i]);
+    // pakowanie 5-bit (bit-plane) w kolejnosci 8-pikselowych pionowych paskow
+    // (sposob gromadzenia danych omowiony na spotkaniach projektowych)
+    vector<int> kolejnosc;
+    zbudujKolejnosc(w, h, kolejnosc);
+    vector<Uint8> spakowane;
+    pakujBitPlane(&idx[0], kolejnosc, spakowane);
 
     // zapis pliku
     FILE* f = fopen(nazwaWyj, "wb");
@@ -245,7 +283,7 @@ int konwersjaBMPdoGK26(const char* nazwaWej, const char* nazwaWyj,
     hdr[9]  = (Uint8)((w >> 8) & 0xFF);
     hdr[10] = (Uint8)(h & 0xFF);
     hdr[11] = (Uint8)((h >> 8) & 0xFF);
-    Uint32 dataSize = (Uint32)bs.bajty.size();
+    Uint32 dataSize = (Uint32)spakowane.size();
     hdr[12] = (Uint8)( dataSize        & 0xFF);
     hdr[13] = (Uint8)((dataSize >>  8) & 0xFF);
     hdr[14] = (Uint8)((dataSize >> 16) & 0xFF);
@@ -264,8 +302,8 @@ int konwersjaBMPdoGK26(const char* nazwaWej, const char* nazwaWyj,
         fwrite(paletaSzaryDedykowana, 1, 32, f);
     }
 
-    if (!bs.bajty.empty())
-        fwrite(&bs.bajty[0], 1, bs.bajty.size(), f);
+    if (!spakowane.empty())
+        fwrite(&spakowane[0], 1, spakowane.size(), f);
     fclose(f);
 
     printf("Zapisano %s (tryb=%d dithering=%d) -- %d bajtow danych\n",
@@ -325,23 +363,32 @@ static int wczytajGK26(const char* nazwa, int* zwrocW, int* zwrocH,
     }
     fclose(f);
 
-    OdczytBitow ob(dane.empty() ? NULL : &dane[0], (int)dataSize);
-    int n = w * h;
     int maxN = szerokosc * wysokosc;
-    if (n > maxN) n = maxN;
-    for (int i = 0; i < n; i++) {
-        Uint8 idx = ob.czytaj5();
+
+    // dane sa zapisane bit-plane w kolejnosci 8-pikselowych pionowych paskow -
+    // odtwarzamy indeksy w tej samej kolejnosci i odkladamy na wlasciwe pozycje
+    vector<int> kolejnosc;
+    zbudujKolejnosc(w, h, kolejnosc);
+
+    vector<Uint8> idxKol;
+    rozpakujBitPlane(dane.empty() ? NULL : &dane[0], (int)dataSize,
+                     kolejnosc.size(), idxKol);
+
+    for (size_t i = 0; i < kolejnosc.size(); i++) {
+        Uint8 idx = idxKol[i];
         if (idx > 31) idx = 31;
+        int dest = kolejnosc[i];
+        if (dest < 0 || dest >= maxN) continue;
         if (tryb == TRYB_KOLOR_NARZUCONY) {
-            obrazRGB[i] = paletaKolorNarzucona[idx];
+            obrazRGB[dest] = paletaKolorNarzucona[idx];
         } else if (tryb == TRYB_KOLOR_DEDYKOWANY) {
-            obrazRGB[i] = paletaKolorDedykowana[idx];
+            obrazRGB[dest] = paletaKolorDedykowana[idx];
         } else if (tryb == TRYB_SZARY_NARZUCONY) {
             Uint8 v = paletaSzaryNarzucona[idx];
-            obrazRGB[i].r = v; obrazRGB[i].g = v; obrazRGB[i].b = v; obrazRGB[i].a = 255;
+            obrazRGB[dest].r = v; obrazRGB[dest].g = v; obrazRGB[dest].b = v; obrazRGB[dest].a = 255;
         } else if (tryb == TRYB_SZARY_DEDYKOWANY) {
             Uint8 v = paletaSzaryDedykowana[idx];
-            obrazRGB[i].r = v; obrazRGB[i].g = v; obrazRGB[i].b = v; obrazRGB[i].a = 255;
+            obrazRGB[dest].r = v; obrazRGB[dest].g = v; obrazRGB[dest].b = v; obrazRGB[dest].a = 255;
         }
     }
 
