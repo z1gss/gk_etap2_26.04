@@ -1,4 +1,3 @@
-// funkcje do redukcji kolorow i tworzenia palet
 #include "GK2026-Paleta.h"
 #include "GK2026-Zmienne.h"
 #include "GK2026-MedianCut.h"
@@ -6,7 +5,6 @@
 #include <stdlib.h>
 #include <math.h>
 
-// klasyczny wzorzec Bayera 4x4 - wartosci 0..15
 const int bayer4x4[4][4] = {
     {  0,  8,  2, 10 },
     { 12,  4, 14,  6 },
@@ -15,15 +13,12 @@ const int bayer4x4[4][4] = {
 };
 
 Uint8 luminancja(Uint8 r, Uint8 g, Uint8 b) {
-    // klasyczne wagi BT.601
     int y = (299 * r + 587 * g + 114 * b) / 1000;
     if (y < 0)   y = 0;
     if (y > 255) y = 255;
     return (Uint8)y;
 }
 
-// 32 barwy narzucone: 4 poziomy R, 4 poziomy G, 2 poziomy B
-// indeks = (R<<3) | (G<<1) | B  (R,G in 0..3, B in 0..1)
 void zbudujPaleteKolorNarzucona() {
     static const Uint8 lvl4[4] = {0, 85, 170, 255};
     static const Uint8 lvl2[2] = {0, 255};
@@ -41,7 +36,6 @@ void zbudujPaleteKolorNarzucona() {
     }
 }
 
-// 32 odcienie szarosci narzucone, liniowo 0..255
 void zbudujPaleteSzaryNarzucona() {
     for (int i = 0; i < 32; i++) {
         paletaSzaryNarzucona[i] = (Uint8)((i * 255 + 15) / 31);

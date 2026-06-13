@@ -210,6 +210,28 @@ Po uruchomieniu (`bin/Release/GK2026-Projekt.exe`) okno SDL akceptuje klawisze:
 | `b`        | Wyczyść ekran                                                            |
 | `ESC`      | Wyjście                                                                  |
 
+### 6.1. Zadanie — MedianCut dla różnych wersji bitowych
+
+Podgląd kwantyzacji MedianCut dla alfabetów 3–7 bitowych (lewa połowa okna —
+oryginał, prawa — wynik, na dole pasek wygenerowanej palety). Przytrzymanie
+**Shift** włącza dithering Floyd-Steinberg. Klawisze te tylko wyświetlają wynik —
+nie zapisują pliku `.gk26`.
+
+| Klawisz | Shift | Tryb                                  |
+|---------|-------|---------------------------------------|
+| `z`     | `Z`   | kolor MedianCut 3-bit (8 barw)        |
+| `x`     | `X`   | kolor MedianCut 4-bit (16 barw)       |
+| `c`     | `C`   | kolor MedianCut 5-bit (32 barwy)      |
+| `v`     | `V`   | kolor MedianCut 6-bit (64 barwy)      |
+| `n`     | `N`   | kolor MedianCut 7-bit (128 barw)      |
+| `r`     | `R`   | szarości MedianCut 3-bit (8 odcieni)  |
+| `t`     | `T`   | szarości MedianCut 4-bit (16 odcieni) |
+| `y`     | `Y`   | szarości MedianCut 5-bit (32 odcienie)|
+| `e`     | `E`   | szarości MedianCut 6-bit (64 odcienie)|
+| `m`     | `M`   | szarości MedianCut 7-bit (128 odcieni)|
+
+Bez Shift — bez ditheringu; z Shift — z ditheringiem Floyd-Steinberg.
+
 Po naciśnięciu klawisza `1..8` aplikacja zapisuje plik wynikowy `obrazek.gk26`
 oraz natychmiast wczytuje go ponownie i wyświetla, dzięki czemu od razu widać,
 jak wygląda obraz po filtracji do nowego formatu. Klawisz `9` wykonuje konwersję

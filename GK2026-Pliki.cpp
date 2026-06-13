@@ -1,4 +1,3 @@
-// funkcje do operacji na plikach
 #include "GK2026-Pliki.h"
 #include "GK2026-Zmienne.h"
 #include "GK2026-Funkcje.h"
@@ -11,21 +10,6 @@
 #include <vector>
 
 using namespace std;
-
-// ---------- pakowanie 5-bit (bit-plane, zadanie 1) ----------
-//
-// Zgodnie ze sposobem omowionym na spotkaniach projektowych blok 8 kolejnych
-// pikseli (kazdy 5-bitowy) jest pakowany w 5 bajtow tak, ze bajt nr k zawiera
-// bit nr k wszystkich 8 pikseli. Pierwszy piksel bloku trafia na pozycje
-// najbardziej znaczaca (bit 7), ostatni na najmniej znaczaca (bit 0):
-//
-//   bajt 0: A0 B0 C0 D0 E0 F0 G0 H0   (bit nr 0 osmiu pikseli A..H)
-//   bajt 1: A1 B1 C1 D1 E1 F1 G1 H1
-//   ...
-//   bajt 4: A4 B4 C4 D4 E4 F4 G4 H4
-//
-// Piksele bierzemy w kolejnosci podanej w 'kol' (8-pikselowe pionowe paski),
-// dzielac ten strumien na bloki po 8.
 
 static void pakujBitPlane(const Uint8* idx, const vector<int>& kol,
                           vector<Uint8>& wynik) {
@@ -45,7 +29,6 @@ static void pakujBitPlane(const Uint8* idx, const vector<int>& kol,
     }
 }
 
-// Odwrotnosc pakowania: z bajtow odtwarza indeksy 5-bitowe w kolejnosci 'kol'.
 static void rozpakujBitPlane(const Uint8* dane, int rozmiar, size_t n,
                              vector<Uint8>& idxKol) {
     idxKol.assign(n, 0);
@@ -67,14 +50,8 @@ static void rozpakujBitPlane(const Uint8* dane, int rozmiar, size_t n,
     }
 }
 
-// ---------- konwersje obraz -> indeksy ----------
-
-// stosuje filtracje + dithering wybranego rodzaju
-//   dithering: 0 = brak, 1 = Floyd-Steinberg, 2 = Bayer 4x4 (uporzadkowany)
-// zapisuje wynikowe indeksy 0..31 do tablicy idx (rozmiar w*h)
 static void filtrujKolor(const SDL_Color* zrodlo, int w, int h,
                          Uint8* idx, int dithering, int dedykowana) {
-    // pracujemy na buforze typu int dla bezpiecznego rozprowadzania bledu
     vector<int> rR(w * h), rG(w * h), rB(w * h);
     for (int i = 0; i < w * h; i++) {
         rR[i] = zrodlo[i].r;
@@ -82,8 +59,6 @@ static void filtrujKolor(const SDL_Color* zrodlo, int w, int h,
         rB[i] = zrodlo[i].b;
     }
 
-    // skoki kwantyzacji dla narzuconej palety 2-2-1 (R 4 poziomy, G 4, B 2)
-    // wykorzystywane przy ditheringu Bayera, aby bias byl wlasciwego rzedu
     const int stepR = 256 / 4;
     const int stepG = 256 / 4;
     const int stepB = 256 / 2;
@@ -95,8 +70,6 @@ static void filtrujKolor(const SDL_Color* zrodlo, int w, int h,
             int g = rG[p];
             int b = rB[p];
 
-            // Bayer 4x4: dodaj bias z zakresu (-step/2, +step/2)
-            // wzor: (M+0.5)/16 - 0.5  -> calkowicie: (2M - 15) / 32
             if (dithering == 2) {
                 int M = bayer4x4[y & 3][x & 3];
                 r += ((2 * M - 15) * stepR) / 32;
@@ -114,7 +87,6 @@ static void filtrujKolor(const SDL_Color* zrodlo, int w, int h,
             idx[p] = (Uint8)k;
 
             if (dithering == 1) {
-                // Floyd-Steinberg - rozprowadzanie bledu kwantyzacji do sasiadow
                 SDL_Color pal = dedykowana ? paletaKolorDedykowana[k]
                                            : paletaKolorNarzucona[k];
                 int eR = r - pal.r;
@@ -153,7 +125,6 @@ static void filtrujSzary(const SDL_Color* zrodlo, int w, int h,
         rY[i] = luminancja(zrodlo[i].r, zrodlo[i].g, zrodlo[i].b);
     }
 
-    // skok kwantyzacji dla 32 narzuconych poziomow szarosci
     const int stepY = 256 / 32;
 
     for (int y = 0; y < h; y++) {
@@ -161,7 +132,6 @@ static void filtrujSzary(const SDL_Color* zrodlo, int w, int h,
             int p = y * w + x;
             int yy = rY[p];
 
-            // Bayer 4x4: bias z (-step/2, +step/2)
             if (dithering == 2) {
                 int M = bayer4x4[y & 3][x & 3];
                 yy += ((2 * M - 15) * stepY) / 32;
@@ -175,7 +145,6 @@ static void filtrujSzary(const SDL_Color* zrodlo, int w, int h,
             idx[p] = (Uint8)k;
 
             if (dithering == 1) {
-                // Floyd-Steinberg
                 Uint8 pal = dedykowana ? paletaSzaryDedykowana[k]
                                        : paletaSzaryNarzucona[k];
                 int e = yy - pal;
@@ -190,12 +159,6 @@ static void filtrujSzary(const SDL_Color* zrodlo, int w, int h,
     }
 }
 
-// ---------- kolejnosc zbierania danych ----------
-
-// Buduje liste pozycji pikseli (row-major p = y*w + x) w kolejnosci omowionej
-// na spotkaniach projektowych: blokami po 8 pikseli w pionowych paskach.
-// Pierwszy blok: (0,0)..(7,0), kolejny: (0,1)..(7,1), ... po dotarciu do
-// dolnej krawedzi nastepny 8-pikselowy pasek: (8,0)..(15,0) itd.
 static void zbudujKolejnosc(int w, int h, vector<int>& kol) {
     kol.clear();
     kol.reserve(w * h);
@@ -209,8 +172,6 @@ static void zbudujKolejnosc(int w, int h, vector<int>& kol) {
     }
 }
 
-// ---------- konwersja BMP -> GK26 ----------
-
 int konwersjaBMPdoGK26(const char* nazwaWej, const char* nazwaWyj,
                        int tryb, int dithering) {
     SDL_Surface* bmp = SDL_LoadBMP(nazwaWej);
@@ -222,7 +183,6 @@ int konwersjaBMPdoGK26(const char* nazwaWej, const char* nazwaWyj,
     int w = bmp->w;
     int h = bmp->h;
 
-    // wczytujemy do tymczasowego bufora o rozmiarze odpowiadajacym BMP
     vector<SDL_Color> zrodlo(w * h);
     SDL_LockSurface(bmp);
     for (int yy = 0; yy < h; yy++) {
@@ -240,14 +200,12 @@ int konwersjaBMPdoGK26(const char* nazwaWej, const char* nazwaWyj,
     SDL_UnlockSurface(bmp);
     SDL_FreeSurface(bmp);
 
-    // kopia do globalu obrazRGB (z przycieciem do pojemnosci)
     int W = (w < szerokosc) ? w : szerokosc;
     int H = (h < wysokosc)  ? h : wysokosc;
     for (int yy = 0; yy < H; yy++)
         for (int xx = 0; xx < W; xx++)
             obrazRGB[yy * szerokosc + xx] = zrodlo[yy * w + xx];
 
-    // budujemy palete wlasciwa dla trybu
     int kolor      = (tryb == TRYB_KOLOR_NARZUCONY || tryb == TRYB_KOLOR_DEDYKOWANY);
     int dedykowana = (tryb == TRYB_KOLOR_DEDYKOWANY || tryb == TRYB_SZARY_DEDYKOWANY);
     if (tryb == TRYB_KOLOR_NARZUCONY)  zbudujPaleteKolorNarzucona();
@@ -259,14 +217,11 @@ int konwersjaBMPdoGK26(const char* nazwaWej, const char* nazwaWyj,
     if (kolor) filtrujKolor(&zrodlo[0], w, h, &idx[0], dithering, dedykowana);
     else       filtrujSzary(&zrodlo[0], w, h, &idx[0], dithering, dedykowana);
 
-    // pakowanie 5-bit (bit-plane) w kolejnosci 8-pikselowych pionowych paskow
-    // (sposob gromadzenia danych omowiony na spotkaniach projektowych)
     vector<int> kolejnosc;
     zbudujKolejnosc(w, h, kolejnosc);
     vector<Uint8> spakowane;
     pakujBitPlane(&idx[0], kolejnosc, spakowane);
 
-    // zapis pliku
     FILE* f = fopen(nazwaWyj, "wb");
     if (!f) { printf("Nie mozna otworzyc pliku do zapisu: %s\n", nazwaWyj); return -1; }
 
@@ -277,7 +232,7 @@ int konwersjaBMPdoGK26(const char* nazwaWej, const char* nazwaWyj,
     hdr[3] = GK26_MAGIC3;
     hdr[4] = GK26_WERSJA;
     hdr[5] = (Uint8)tryb;
-    hdr[6] = (Uint8)(dithering & 0xFF); // 0=brak, 1=Floyd-Steinberg, 2=Bayer 4x4
+    hdr[6] = (Uint8)(dithering & 0xFF);
     hdr[7] = GK26_BPP;
     hdr[8]  = (Uint8)(w & 0xFF);
     hdr[9]  = (Uint8)((w >> 8) & 0xFF);
@@ -290,7 +245,6 @@ int konwersjaBMPdoGK26(const char* nazwaWej, const char* nazwaWyj,
     hdr[15] = (Uint8)((dataSize >> 24) & 0xFF);
     fwrite(hdr, 1, 16, f);
 
-    // paleta tylko dla trybow dedykowanych
     if (tryb == TRYB_KOLOR_DEDYKOWANY) {
         for (int i = 0; i < 32; i++) {
             Uint8 rgb[3] = { paletaKolorDedykowana[i].r,
@@ -311,9 +265,6 @@ int konwersjaBMPdoGK26(const char* nazwaWej, const char* nazwaWyj,
     return 0;
 }
 
-// ---------- odczyt .gk26 ----------
-
-// uniwersalny odczyt do bufora obrazRGB; zwraca 0 ok, -1 blad
 static int wczytajGK26(const char* nazwa, int* zwrocW, int* zwrocH,
                        int* zwrocTryb, int* zwrocDith) {
     FILE* f = fopen(nazwa, "rb");
@@ -341,7 +292,6 @@ static int wczytajGK26(const char* nazwa, int* zwrocW, int* zwrocH,
         printf("Niewspierana wersja/bpp pliku\n"); fclose(f); return -1;
     }
 
-    // wczytujemy palete (jesli tryb dedykowany) i odtwarzamy palety narzucone
     if (tryb == TRYB_KOLOR_NARZUCONY) zbudujPaleteKolorNarzucona();
     if (tryb == TRYB_SZARY_NARZUCONY) zbudujPaleteSzaryNarzucona();
     if (tryb == TRYB_KOLOR_DEDYKOWANY) {
@@ -365,8 +315,6 @@ static int wczytajGK26(const char* nazwa, int* zwrocW, int* zwrocH,
 
     int maxN = szerokosc * wysokosc;
 
-    // dane sa zapisane bit-plane w kolejnosci 8-pikselowych pionowych paskow -
-    // odtwarzamy indeksy w tej samej kolejnosci i odkladamy na wlasciwe pozycje
     vector<int> kolejnosc;
     zbudujKolejnosc(w, h, kolejnosc);
 
@@ -430,7 +378,6 @@ int konwersjaGK26doBMP(const char* nazwaWej, const char* nazwaWyj) {
         for (int x = 0; x < w; x++) {
             SDL_Color c = obrazRGB[y * w + x];
             Uint8* p = (Uint8*)out->pixels + y * out->pitch + x * 3;
-            // SDL_PIXELFORMAT_RGB24 = R,G,B w pamieci
             p[0] = c.r; p[1] = c.g; p[2] = c.b;
         }
     }
